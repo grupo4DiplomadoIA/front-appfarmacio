@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'map_screen.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ChatScreen extends StatefulWidget {
   @override
@@ -16,12 +17,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
 
- @override
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
-    @override
+
+  @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
@@ -36,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
   }
+
   void _handleSubmitted(String text) async {
     _textController.clear();
     ChatMessage message = ChatMessage(
@@ -46,28 +49,26 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add(message);
       _isLoading = true;
     });
-WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
+    try {
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:5000/chat'),
+        headers: <String, String>{
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: jsonEncode(<String, dynamic>{
+          'mensaje': text,
+          'lat': -37.444513,
+          'lng': -72.336370,
+        }),
+      );
 
-
-     try {
-    final response = await http.post(
-      Uri.parse('http://127.0.0.1:5000/chat'),
-      headers: <String, String>{
-        'Content-Type': 'application/json; charset=UTF-8',
-      },
-      body: jsonEncode(<String, dynamic>{
-        'mensaje': text,
-        'lat': -37.444513,
-        'lng': -72.336370,
-      }),
-    );
-   
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
         _processApiResponse(jsonResponse);
       } else {
-          ChatMessage errorMessage = ChatMessage(
+        ChatMessage errorMessage = ChatMessage(
           text: "Lo siento, hubo un error al procesar tu solicitud.",
           isUser: false,
         );
@@ -85,7 +86,7 @@ WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       });
     } finally {
       setState(() {
-        _isLoading = false; 
+        _isLoading = false;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     }
@@ -120,51 +121,63 @@ WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       setState(() {
         _messages.add(combinedMessage);
       });
+      if (data['productos'] != null && data['productos'].isNotEmpty) {
+        ChatMessage productMessage = ChatMessage(
+          text: "Sugerencias de productos basadas en tu consulta:",
+          isUser: false,
+          productCards: data['productos'],
+        );
+        setState(() {
+          _messages.add(productMessage);
+        });
+      }
     } else if (tipo == "1") {
       List<Map<String, dynamic>> pharmaciesData = [];
-       for (var pharmacy in data['Farmacias']) {
-      pharmaciesData.add({
-        ...pharmacy,
-        'is_on_duty': false,
-      });
-    }
-     for (var onDuty in data['Turno']) {
-      pharmaciesData.add({
-        ...onDuty,
-        'is_on_duty': true,
-      });
-    }
+      for (var pharmacy in data['Farmacias']) {
+        pharmaciesData.add({
+          ...pharmacy,
+          'is_on_duty': false,
+        });
+      }
+      for (var onDuty in data['Turno']) {
+        pharmaciesData.add({
+          ...onDuty,
+          'is_on_duty': true,
+        });
+      }
       ChatMessage mapMessage = ChatMessage(
-        text: "Aquí tienes Información de Farmacias en tu zona. Sigue el link para ver el mapa!!",
+        text:
+            "Aquí tienes Información de Farmacias en tu zona. Sigue el link para ver el mapa!!",
         isUser: false,
         onMapPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => MapScreen(pharmaciesData: pharmaciesData)),
+            MaterialPageRoute(
+                builder: (context) =>
+                    MapScreen(pharmaciesData: pharmaciesData)),
           );
         },
       );
       setState(() {
         _messages.add(mapMessage);
       });
-    }else if (tipo == "3") {
-    ChatMessage message = ChatMessage(
-      text: data,
-      isUser: false,
-    );
-    setState(() {
-      _messages.add(message);
-    });
-  }else if (tipo == "4") {
-    ChatMessage message = ChatMessage(
-      text: data,
-      isUser: false,
-    );
-    setState(() {
-      _messages.add(message);
-    });
-  }
-
+    } else if (tipo == "3") {
+      ChatMessage message = ChatMessage(
+        text: data,
+        isUser: false,
+      );
+      setState(() {
+        _messages.add(message);
+      });
+    } else if (tipo == "4") {
+      ChatMessage message = ChatMessage(
+        text: data,
+        isUser: false,
+      );
+      setState(() {
+        _messages.add(message);
+      });
+    }
   }
 
   @override
@@ -194,8 +207,7 @@ WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
         actions: [
           IconButton(
             icon: Icon(Icons.chat),
-            onPressed: () {
-            },
+            onPressed: () {},
           ),
         ],
       ),
@@ -213,8 +225,7 @@ WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
             ListTile(
               leading: Icon(Icons.history),
               title: Text('Historial'),
-              onTap: () {
-              },
+              onTap: () {},
             ),
             ListTile(
               leading: Icon(Icons.settings),
@@ -308,136 +319,237 @@ class ChatMessage extends StatelessWidget {
   final bool isUser;
   final VoidCallback? onMapPressed;
   final List<Map<String, dynamic>>? qdrantResults;
-
+  final List<dynamic>? productCards;
   ChatMessage({
     required this.text,
     required this.isUser,
     this.onMapPressed,
     this.qdrantResults,
+    this.productCards,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
-      child: Row(
-        mainAxisAlignment:
-            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (!isUser)
-            CircleAvatar(
-              child: Image.asset('assets/images/logo.png'),
-              radius: 15,
-            ),
-          SizedBox(width: 8.0),
-          Flexible(
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? const Color.fromARGB(255, 164, 198, 153)
-                    : const Color.fromARGB(72, 192, 189, 189),
-                borderRadius: BorderRadius.circular(20),
+          Row(
+            mainAxisAlignment:
+                isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!isUser)
+                CircleAvatar(
+                  child: Image.asset('assets/images/logo.png'),
+                  radius: 15,
+                ),
+              SizedBox(width: 8.0),
+              Flexible(
+                child: Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? const Color.fromARGB(255, 164, 198, 153)
+                        : const Color.fromARGB(72, 192, 189, 189),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (isUser)
+                        Text(
+                          text,
+                          style: TextStyle(color: Colors.black87),
+                        )
+                      else if (qdrantResults != null)
+                        _buildQdrantResultsTable()
+                      else
+                        MarkdownBody(
+                          data: text,
+                          styleSheet: MarkdownStyleSheet(
+                            p: TextStyle(color: Colors.black87),
+                            h1: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            h2: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            strong: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            listBullet: TextStyle(color: Colors.black87),
+                          ),
+                        ),
+                      if (!isUser && onMapPressed != null)
+                        TextButton.icon(
+                          icon: Icon(Icons.location_on, color: Colors.blue),
+                          label: Text('Ver en el mapa',
+                              style: TextStyle(color: Colors.blue)),
+                          onPressed: onMapPressed,
+                        ),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isUser)
-                    Text(
-                      text,
-                      style: TextStyle(color: Colors.black87),
-                    )
-                  else if (qdrantResults != null)
-                    _buildQdrantResultsTable()
-                  else
-                    MarkdownBody(
-                      data: text,
-                      styleSheet: MarkdownStyleSheet(
-                        p: TextStyle(color: Colors.black87),
-                        h1: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                        h2: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                        strong: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                        listBullet: TextStyle(color: Colors.black87),
-                      ),
-                    ),
-                  if (!isUser && onMapPressed != null)
-                    TextButton.icon(
-                      icon: Icon(Icons.location_on, color: Colors.blue),
-                      label: Text('Ver en el mapa',
-                          style: TextStyle(color: Colors.blue)),
-                      onPressed: onMapPressed,
-                    ),
-                ],
-              ),
-            ),
+              SizedBox(width: 8.0),
+              if (isUser) CircleAvatar(radius: 15, child: Icon(Icons.person)),
+            ],
           ),
-          SizedBox(width: 8.0),
-          if (isUser) CircleAvatar(radius: 15, child: Icon(Icons.person)),
+          if (productCards != null && productCards!.isNotEmpty)
+            Container(
+              height: 250,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: productCards!.length,
+                itemBuilder: (context, index) {
+                  var product = productCards![index];
+                  return ProductCard(
+                    imageUrl: product['imagen'],
+                    name: product['nombre'],
+                    price: product['precio'],
+                    url: product['url'],
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
   }
 
- Widget _buildQdrantResultsTable() {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        "Resultados relacionados:",
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-      ),
-      SizedBox(height: 4),
-      Table(
-        border: TableBorder.all(color: Colors.grey.shade300),
-        defaultColumnWidth: IntrinsicColumnWidth(),
-        children: [
-          TableRow(
+  Widget _buildQdrantResultsTable() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Resultados relacionados:",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        SizedBox(height: 4),
+        Table(
+          border: TableBorder.all(color: Colors.grey.shade300),
+          defaultColumnWidth: IntrinsicColumnWidth(),
+          children: [
+            TableRow(
+              children: [
+                TableCell(
+                    child: Padding(
+                  padding: EdgeInsets.all(4.0),
+                  child: Text('Nombre',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                )),
+                TableCell(
+                    child: Padding(
+                  padding: EdgeInsets.all(4.0),
+                  child: Text('Fármaco',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                )),
+                TableCell(
+                    child: Padding(
+                  padding: EdgeInsets.all(4.0),
+                  child: Text('Laboratorio',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                )),
+              ],
+            ),
+            ...qdrantResults!
+                .map((result) => TableRow(
+                      children: [
+                        TableCell(
+                            child: Padding(
+                          padding: EdgeInsets.all(4.0),
+                          child: Text(result['nombre'],
+                              style: TextStyle(fontSize: 10)),
+                        )),
+                        TableCell(
+                            child: Padding(
+                          padding: EdgeInsets.all(4.0),
+                          child: Text(result['farmaco'],
+                              style: TextStyle(fontSize: 10)),
+                        )),
+                        TableCell(
+                            child: Padding(
+                          padding: EdgeInsets.all(4.0),
+                          child: Text(result['laboratorio'],
+                              style: TextStyle(fontSize: 10)),
+                        )),
+                      ],
+                    ))
+                .toList(),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class ProductCard extends StatelessWidget {
+  final String imageUrl;
+  final String name;
+  final String price;
+  final String url;
+
+  ProductCard({
+    required this.imageUrl,
+    required this.name,
+    required this.price,
+    required this.url,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => launchUrl(Uri.parse(url)),
+      child: Card(
+        margin: EdgeInsets.all(8),
+        color: const Color.fromARGB(255, 239, 238, 241),
+        child: Container(
+          width: 180,
+          padding: EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TableCell(child: Padding(
-                padding: EdgeInsets.all(4.0),
-                child: Text('Nombre', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              )),
-              TableCell(child: Padding(
-                padding: EdgeInsets.all(4.0),
-                child: Text('Fármaco', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              )),
-              TableCell(child: Padding(
-                padding: EdgeInsets.all(4.0),
-                child: Text('Laboratorio', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              )),
+              Expanded(
+                child: Container(
+                  alignment: Alignment.center, // Centramos la imagen
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(Icons.error);
+                    },
+                  ),
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                name,
+                style: TextStyle(fontWeight: FontWeight.bold),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              SizedBox(height: 4),
+              Text(
+                price,
+                style:
+                    TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
-          ...qdrantResults!.map((result) => TableRow(
-            children: [
-              TableCell(child: Padding(
-                padding: EdgeInsets.all(4.0),
-                child: Text(result['nombre'], style: TextStyle(fontSize: 10)),
-              )),
-              TableCell(child: Padding(
-                padding: EdgeInsets.all(4.0),
-                child: Text(result['farmaco'], style: TextStyle(fontSize: 10)),
-              )),
-              TableCell(child: Padding(
-                padding: EdgeInsets.all(4.0),
-                child: Text(result['laboratorio'], style: TextStyle(fontSize: 10)),
-              )),
-            ],
-          )).toList(),
-        ],
+        ),
       ),
-    ],
-  );
-}
+    );
+  }
 }
