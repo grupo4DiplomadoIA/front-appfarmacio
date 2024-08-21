@@ -297,7 +297,7 @@ class _MapScreenState extends State<MapScreen> {
                       width: 30,
                       height: 30,
                       child: const Icon(
-                        Icons.person_pin,
+                        Icons.fmd_good_rounded,
                         color: Colors.blueAccent,
                         size: 30,
                       ),
@@ -355,7 +355,7 @@ Widget buildPharmacyMarker() {
   return Stack(
     children: [
       const Icon(
-        Icons.local_hospital_rounded,
+        Icons.fmd_good,
         color: Colors.green,
         size: 25,
       )
@@ -367,7 +367,7 @@ Widget buildOnDutyPharmacyMarker() {
   return Stack(
     children: [
       const Icon(
-        Icons.local_hospital_rounded,
+        Icons.fmd_good,
         color: Colors.red,
         size: 30,
       ),
@@ -380,11 +380,7 @@ Widget buildOnDutyPharmacyMarker() {
             color: Colors.white,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.access_time,
-            color: Colors.red,
-            size: 12,
-          ),
+          
         ),
       ),
     ],

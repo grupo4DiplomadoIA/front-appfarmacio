@@ -16,7 +16,14 @@ class _ChatScreenState extends State<ChatScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
-
+  final Map<String, String> pharmacyLinks = {
+    'CRUZ VERDE': 'https://www.cruzverde.cl',
+    'AHUMADA': 'https://www.farmaciasahumada.cl',
+    'SALCOBRAND': 'https://salcobrand.cl',
+    'DEL DR. SIMI': 'https://www.drsimi.cl',
+    'FARMACIA KNOP': 'https://www.farmaciasknop.com',
+    // Añade más farmacias y sus links según sea necesario
+  };
   @override
   void initState() {
     super.initState();
@@ -37,6 +44,10 @@ class _ChatScreenState extends State<ChatScreen> {
         curve: Curves.easeOut,
       );
     }
+  }
+ void _handleSuggestionSelected(String suggestion) {
+    // Enviar la sugerencia seleccionada al servidor
+    _handleSubmitted(suggestion);
   }
 
   void _handleSubmitted(String text) async {
@@ -145,9 +156,33 @@ class _ChatScreenState extends State<ChatScreen> {
           'is_on_duty': true,
         });
       }
+
+      // Obtener información de la farmacia más cercana
+      String nearestPharmacyInfo = "";
+      String? pharmacyLink;
+      if (data['Distancia'] != null && pharmaciesData.isNotEmpty) {
+        var nearestPharmacy = pharmaciesData.first;
+        nearestPharmacyInfo =
+            "\nLa farmacia más cercana es ${nearestPharmacy['local_nombre']} a ${data['Distancia'].toStringAsFixed(2)} km.";
+
+        // Buscar si la farmacia tiene un link en nuestra lista
+        String pharmacyName = nearestPharmacy['local_nombre'].toString();
+        pharmacyLink = pharmacyLinks.entries
+            .firstWhere(
+              (entry) =>
+                  pharmacyName.toLowerCase().contains(entry.key.toLowerCase()),
+              orElse: () => MapEntry('', ''),
+            )
+            .value;
+      }
+
       ChatMessage mapMessage = ChatMessage(
         text:
-            "Aquí tienes Información de Farmacias en tu zona. Sigue el link para ver el mapa!!",
+            "Aquí tienes Información de Farmacias en tu zona. $nearestPharmacyInfo" +
+                (pharmacyLink != null && pharmacyLink.isNotEmpty
+                    ? "\nVisita su página web: $pharmacyLink"
+                    : "") +
+                "\nSigue el link para ver el mapa!!",
         isUser: false,
         onMapPressed: () {
           Navigator.push(
@@ -169,15 +204,38 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add(message);
       });
-    } else if (tipo == "4") {
-      ChatMessage message = ChatMessage(
-        text: data,
+    }else if (tipo == "4") {
+    String messageText = data;
+    List<Map<String, dynamic>> medicos = List<Map<String, dynamic>>.from(jsonResponse['medicos']);
+    String especialidad = jsonResponse['especialidad'];
+    String ciudad = jsonResponse['ciudad'];
+
+    ChatMessage message = ChatMessage(
+      text: messageText,
+      isUser: false,
+      especialidad: especialidad,
+      ciudad: ciudad,
+      medicos: medicos,
+    );
+    setState(() {
+      _messages.add(message);
+    });
+    } else if (tipo == "5") {
+      // Manejo de sugerencias
+      List<String> alternativas = List<String>.from(jsonResponse['alternativas']);
+      String mensaje = jsonResponse['mensaje'];
+      
+     ChatMessage suggestionMessage = ChatMessage(
+        text: mensaje,
         isUser: false,
+        suggestions: alternativas,
+        onSuggestionSelected: _handleSuggestionSelected,
       );
+      
       setState(() {
-        _messages.add(message);
+        _messages.add(suggestionMessage);
       });
-    }
+    } 
   }
 
   @override
@@ -276,42 +334,49 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildTextComposer() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 8.0),
-      child: Row(
-        children: [
-          IconButton(
-            icon: Icon(Icons.camera_alt),
-            onPressed: () {
-              // Implementar funcionalidad de cámara
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.image),
-            onPressed: () {
-              // Implementar funcionalidad de galería
-            },
-          ),
-          Expanded(
+  return Container(
+    margin: EdgeInsets.symmetric(horizontal: 8.0),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        IconButton(
+          icon: Icon(Icons.camera_alt),
+          onPressed: () {
+            // Implementar funcionalidad de cámara
+          },
+        ),
+        IconButton(
+          icon: Icon(Icons.image),
+          onPressed: () {
+            // Implementar funcionalidad de galería
+          },
+        ),
+        Expanded(
+          child: Container(
+            margin: EdgeInsets.symmetric(vertical: 8.0),
             child: TextField(
               controller: _textController,
               onSubmitted: _handleSubmitted,
               decoration: InputDecoration(
                 hintText: "Mensaje",
-                border: InputBorder.none,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 15.0, vertical: 10.0),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20.0),
+                ),
+                contentPadding: EdgeInsets.symmetric(horizontal: 15.0, vertical: 10.0),
               ),
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
             ),
           ),
-          IconButton(
-            icon: Icon(Icons.send),
-            onPressed: () => _handleSubmitted(_textController.text),
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+        IconButton(
+          icon: Icon(Icons.send),
+          onPressed: () => _handleSubmitted(_textController.text),
+        ),
+      ],
+    ),
+  );
+}
 }
 
 class ChatMessage extends StatelessWidget {
@@ -320,25 +385,35 @@ class ChatMessage extends StatelessWidget {
   final VoidCallback? onMapPressed;
   final List<Map<String, dynamic>>? qdrantResults;
   final List<dynamic>? productCards;
+  final List<String>? suggestions;
+  final Function(String)? onSuggestionSelected;
+  final String? especialidad;
+  final String? ciudad;
+  final List<Map<String, dynamic>>? medicos;
+  
   ChatMessage({
     required this.text,
     required this.isUser,
     this.onMapPressed,
     this.qdrantResults,
     this.productCards,
+    this.suggestions,
+    this.onSuggestionSelected,
+    this.especialidad,
+    this.ciudad,
+    this.medicos,
   });
 
   @override
+@override
   Widget build(BuildContext context) {
     return Container(
       margin: EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
       child: Column(
-        crossAxisAlignment:
-            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment:
-                isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!isUser)
@@ -349,53 +424,28 @@ class ChatMessage extends StatelessWidget {
               SizedBox(width: 8.0),
               Flexible(
                 child: Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                  padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
                   decoration: BoxDecoration(
-                    color: isUser
-                        ? const Color.fromARGB(255, 164, 198, 153)
-                        : const Color.fromARGB(72, 192, 189, 189),
+                    color: isUser ? const Color.fromARGB(255, 186, 217, 176) : const Color.fromARGB(72, 192, 189, 189),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (isUser)
-                        Text(
-                          text,
-                          style: TextStyle(color: Colors.black87),
-                        )
-                      else if (qdrantResults != null)
-                        _buildQdrantResultsTable()
-                      else
-                        MarkdownBody(
-                          data: text,
-                          styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(color: Colors.black87),
-                            h1: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                            h2: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                            strong: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                            listBullet: TextStyle(color: Colors.black87),
-                          ),
+                      MarkdownBody(
+                        data: text,
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(color: Colors.black87),
+                          h1: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                          h2: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                          strong: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                          listBullet: TextStyle(color: Colors.black87),
                         ),
-                      if (!isUser && onMapPressed != null)
-                        TextButton.icon(
-                          icon: Icon(Icons.location_on, color: Colors.blue),
-                          label: Text('Ver en el mapa',
-                              style: TextStyle(color: Colors.blue)),
-                          onPressed: onMapPressed,
-                        ),
+                      ),
+                      if (medicos != null && medicos!.isNotEmpty)
+                        _buildMedicosList(),
+                      if (suggestions != null && suggestions!.isNotEmpty)
+                        _buildSuggestions(),
                     ],
                   ),
                 ),
@@ -425,7 +475,83 @@ class ChatMessage extends StatelessWidget {
       ),
     );
   }
-
+Widget _buildMedicosList() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(height: 16),
+      Text(
+        "Especialistas en $especialidad en $ciudad:",
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      ),
+      SizedBox(height: 8),
+      Column(
+        children: medicos!.map((medico) {
+          return Card(
+            margin: EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundImage: NetworkImage(
+                  medico['imagen'].startsWith('//') 
+                    ? 'https:${medico['imagen']}' 
+                    : medico['imagen']
+                ),
+                radius: 25,
+                onBackgroundImageError: (_, __) {
+                  // Manejar errores de carga de imagen
+                },
+              ),
+              title: Text(medico['nombre'], style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(medico['especialidades']),
+                  Text(medico['direccion']),
+                ],
+              ),
+              isThreeLine: true,
+            ),
+          );
+        }).toList(),
+      ),
+    ],
+  );
+}
+Widget _buildSuggestions() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(height: 8),
+      Text(
+        "Sugerencias:",
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      SizedBox(height: 4),
+      Wrap(
+        spacing: 8,
+        children: suggestions!.map((suggestion) {
+          return ElevatedButton(
+            child: Text(suggestion),
+            onPressed: () {
+              if (onSuggestionSelected != null) {
+                onSuggestionSelected!(suggestion);
+              }
+            },
+            style: ButtonStyle(
+              backgroundColor: MaterialStateProperty.all<Color>(Colors.blue),
+              foregroundColor: MaterialStateProperty.all<Color>(Colors.white),
+              shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18.0),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    ],
+  );
+}
   Widget _buildQdrantResultsTable() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
