@@ -41,17 +41,26 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final MapController mapController = MapController();
-  final LatLng initialPosition = LatLng(-37.444513, -72.336370);
+  late LatLng initialPosition;
   LatLng? myPosition;
   List<LatLng> routePoints = [];
   List<Pharmacy> pharmacies = [];
   List<Pharmacy> visiblePharmacies = [];
+  bool isLoading = true;
 
    @override
-  void initState() {
+   void initState() {
     super.initState();
-    getCurrentLocation().then((_) => _processPharmaciesData());
+    _initializeMap();
   }
+    Future<void> _initializeMap() async {
+    await getCurrentLocation();
+    _processPharmaciesData();
+    setState(() {
+      isLoading = false;
+    });
+  }
+
   bool isPharmacyOpen(String openingHours) {
     final now = DateTime.now();
     final formatter = DateFormat('HH:mm:ss');
@@ -118,15 +127,16 @@ class _MapScreenState extends State<MapScreen> {
       _getRoute(dutyPharmacy.location);
     }
   }
-   Future<void> getCurrentLocation() async {
+ Future<void> getCurrentLocation() async {
     Position position = await determinePosition();
     setState(() {
       myPosition = LatLng(position.latitude, position.longitude);
+      initialPosition = myPosition!;
     });
   }
- Future<void> _getRoute(LatLng destination) async {
+Future<void> _getRoute(LatLng destination) async {
     final response = await http.get(Uri.parse(
-        'https://api.mapbox.com/directions/v5/mapbox/driving/${initialPosition.longitude},${initialPosition.latitude};${destination.longitude},${destination.latitude}?geometries=geojson&access_token=$MAPBOX_ACCESS_TOKEN'));
+        'https://api.mapbox.com/directions/v5/mapbox/driving/${myPosition!.longitude},${myPosition!.latitude};${destination.longitude},${destination.latitude}?geometries=geojson&access_token=$MAPBOX_ACCESS_TOKEN'));
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
@@ -250,7 +260,9 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      body: Stack(
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : Stack(
         children: [
           FlutterMap(
             mapController: mapController,
@@ -343,7 +355,9 @@ class _MapScreenState extends State<MapScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          mapController.move(initialPosition, 13);
+          if (myPosition != null) {
+            mapController.move(myPosition!, 13);
+          }
         },
         child: Icon(Icons.my_location),
       ),
